@@ -1,5 +1,7 @@
 # OMM (Open Match Model)
 
+[READ in English](https://github.com/NelikKKL/OMM/blob/main/EN.README.md)
+
 **OMM** — это сверхлегкий формат 3D-моделей и автономный движок на чистом JavaScript. Создан для быстрой интеграции 3D-графики в веб-проекты без использования тяжелых библиотек (Zero Dependencies).
 
 ## 🚀 Быстрый старт
