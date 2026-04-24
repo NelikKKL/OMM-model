@@ -23,6 +23,10 @@ A `.omm` file is a text document. Each new shape starts with a keyword.
 ### 1. Geometry
 * `cube3` — standard cube.
 * `cube3 : 4` — slab (height reduced by 4 times). The number after `:` determines the object's thickness.
+* `pyramid3` — pyramid.
+* `sphere3` — sphere.
+* `cylinder3` — cylinder.
+* `triangle3` — flat triangle.
 * `image3` — flat surface (billboard) in 3D space. Perfect for icons or grass.
 
 ### 2. Transformations
@@ -32,9 +36,16 @@ Parameters are written under the shape or on one line:
 * `rr(deg)` — rotate right (around Y axis).
 * `ru(deg)` — rotate up (around X axis).
 
-### 3. Visualization and Textures
-* `color(R, G, B)` — fill color (for example, `color(0, 255, 100)`).
+### 3. Asymmetric Stretching
+Allows deforming shapes by stretching sides (works for all types except `cube3`):
+* `ur(n)` — stretch right (X-axis).
+* `ul(n)` — stretch left (X-axis).
+* `uu(n)` — stretch up (Y-axis).
+* `ud(n)` — stretch down (Y-axis).
+* `ug(n)` — stretch forward (Z-axis).
+* `um(n)` — stretch backward (Z-axis).
 
+* `color(R, G, B)` – color of the filling (e.g. `cord(0, 255, 100).
 
 * **Textures**: The `texture(...)` command replaces color with an image. You can use external links like `texture(https://site.com/img.png)` or local Base64-encoded images that the Studio editor automatically generates when you load an image: `texture(data:image/png;base64,iVBOR...)`. The texture applies to all cube faces automatically.
 
