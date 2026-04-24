@@ -38,16 +38,6 @@ Parameters are written under the shape or on one line:
 
 * **Textures**: The `texture(...)` command replaces color with an image. You can use external links like `texture(https://site.com/img.png)` or local Base64-encoded images that the Studio editor automatically generates when you load an image: `texture(data:image/png;base64,iVBOR...)`. The texture applies to all cube faces automatically.
 
----
-
-## 🛠 Working in OMM Studio
-
-The editor provides visual scene configuration with buttons to add cubes or sprites to your project.
-
-**Texturing** is handled through the "📷 Texture" button—select an image file and the editor automatically inserts the Base64-encoded `texture(...)` command into your code. When you're ready, use the **"Download .omm"** button to save in the correct binary format, preventing the browser from adding a `.txt` extension.
-
----
-
 ## 💡 Advanced Usage (API)
 
 Manage models directly from HTML using `<omm-model>` tag attributes:
