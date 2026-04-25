@@ -42,6 +42,7 @@ class OmmModel extends HTMLElement {
         this.textures = {};
         this.focal = 600;
         this.isAnimating = false;
+        this.animationRequested = false;
     }
 
     connectedCallback() {
@@ -74,9 +75,13 @@ class OmmModel extends HTMLElement {
             this.parse(content);
         }
 
-        if (this.hasAttribute('autorate')) {
+        // Запускаем анимацию, если есть атрибут autorate ИЛИ если в коде найдены анимации
+        if (this.hasAttribute('autorate') || this.isAnimating) {
             this.isAnimating = true;
-            this.animate();
+            if (!this.animationRequested) {
+                this.animationRequested = true;
+                this.animate();
+            }
         } else {
             this.render();
         }
@@ -103,7 +108,7 @@ class OmmModel extends HTMLElement {
                 current = { 
                     type: typeStr.replace('3', ''), 
                     x:0, y:0, z:0, s:50, sy, rx:0, ry:0, col:'200,200,200', tex:null,
-                    ur:0, ul:0, ug:0, um:0, ud:0, uu:0 // Новые параметры вытягивания
+                    ur:0, ul:0, ug:0, um:0, ud:0, uu:0 
                 };
                 this.objects.push(current);
             }
@@ -120,16 +125,39 @@ class OmmModel extends HTMLElement {
                 if (s) current.s *= parseFloat(s);
                 if (rr) current.ry = parseFloat(rr) * Math.PI/180;
                 if (ru) current.rx = parseFloat(ru) * Math.PI/180;
-                if (c) current.col = c;
+                if (c) current.col = c.replace(/\s/g, ''); 
                 if (t) current.tex = this.getImg(t);
                 
-                // Считываем значения вытягивания
                 if (ur) current.ur = parseFloat(ur);
                 if (ul) current.ul = parseFloat(ul);
                 if (ug) current.ug = parseFloat(ug);
                 if (um) current.um = parseFloat(um);
                 if (ud) current.ud = parseFloat(ud);
                 if (uu) current.uu = parseFloat(uu);
+
+                // --- НОВАЯ ФУНКЦИЯ: ПАРСЕР АНИМАЦИЙ ---
+                const animMatch = l.match(/animation\((.+?)\)/);
+                if (animMatch) {
+                    current.anim = [];
+                    current.animIndex = 0;
+                    current.animSpeed = 2.0; // Скорость перемещения
+                    
+                    // Разбиваем точки по запятым
+                    const frames = animMatch[1].split(',');
+                    frames.forEach(frame => {
+                        const kf = {};
+                        // Ищем пары "буква+число", например x10, y-5.5, rr45
+                        const props = frame.match(/([a-z]+)(-?[\d.]+)/g);
+                        if (props) {
+                            props.forEach(p => {
+                                const m = p.match(/([a-z]+)(-?[\d.]+)/);
+                                if (m) kf[m[1]] = parseFloat(m[2]);
+                            });
+                            current.anim.push(kf);
+                        }
+                    });
+                    this.isAnimating = true; // Авто-старт цикла анимации
+                }
             }
         });
         this.render();
@@ -180,7 +208,61 @@ class OmmModel extends HTMLElement {
 
     animate() {
         if (!this.isAnimating) return;
-        this.camera.ry += 0.01;
+        
+        // Вращение камеры, если задан атрибут autorate
+        if (this.hasAttribute('autorate')) {
+            this.camera.ry += 0.01;
+        }
+
+        // --- ЛОГИКА ПОЛЕТА МОДЕЛЕЙ ПО ТОЧКАМ ---
+        this.objects.forEach(obj => {
+            if (obj.anim && obj.anim.length > 0) {
+                const target = obj.anim[obj.animIndex];
+                const speed = obj.animSpeed;
+                const rotSpeed = 0.05; // Скорость поворота
+
+                // Берем целевые координаты (если в точке не указан X, остаемся на текущем X)
+                const tx = target.x !== undefined ? target.x : obj.x;
+                const ty = target.y !== undefined ? target.y : obj.y;
+                const tz = target.z !== undefined ? target.z : obj.z;
+                
+                // Целевые углы (переводим градусы в радианы)
+                const trx = target.ru !== undefined ? target.ru * Math.PI/180 : obj.rx;
+                const try_ = target.rr !== undefined ? target.rr * Math.PI/180 : obj.ry;
+
+                // Вычисляем расстояние до точки
+                const dx = tx - obj.x;
+                const dy = ty - obj.y;
+                const dz = tz - obj.z;
+                const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+                // Движемся к точке с постоянной скоростью
+                if (dist > speed) {
+                    obj.x += (dx / dist) * speed;
+                    obj.y += (dy / dist) * speed;
+                    obj.z += (dz / dist) * speed;
+                } else {
+                    // Примагничиваемся, если оказались очень близко
+                    obj.x = tx; obj.y = ty; obj.z = tz;
+                }
+
+                // Плавный поворот
+                if (Math.abs(trx - obj.rx) > rotSpeed) obj.rx += Math.sign(trx - obj.rx) * rotSpeed;
+                else obj.rx = trx;
+
+                if (Math.abs(try_ - obj.ry) > rotSpeed) obj.ry += Math.sign(try_ - obj.ry) * rotSpeed;
+                else obj.ry = try_;
+
+                // Проверяем, достигли ли мы точки (и по координатам, и по повороту)
+                if (dist <= speed && Math.abs(trx - obj.rx) <= rotSpeed && Math.abs(try_ - obj.ry) <= rotSpeed) {
+                    obj.animIndex++; // Переключаем на следующую точку
+                    if (obj.animIndex >= obj.anim.length) {
+                        obj.animIndex = 0; // Зацикливаем анимацию
+                    }
+                }
+            }
+        });
+
         this.render();
         requestAnimationFrame(() => this.animate());
     }
@@ -193,7 +275,6 @@ class OmmModel extends HTMLElement {
             const s = obj.s, sy = s * obj.sy;
             let v = [], faces = [];
 
-            // 1. Генерация стандартных вершин
             if (obj.type === 'cube') {
                 v = [{x:-s,y:-sy,z:-s},{x:s,y:-sy,z:-s},{x:s,y:sy,z:-s},{x:-s,y:sy,z:-s},
                      {x:-s,y:-sy,z:s},{x:s,y:-sy,z:s},{x:s,y:sy,z:s},{x:-s,y:sy,z:s}];
@@ -246,28 +327,23 @@ class OmmModel extends HTMLElement {
                 v = [{x:-s,y:-sy,z:0},{x:s,y:-sy,z:0},{x:s,y:sy,z:0},{x:-s,y:sy,z:0}];
             }
 
-            // 2. Применяем асимметричное вытягивание (stretch)
             const ur = obj.ur || 0, ul = obj.ul || 0;
             const ug = obj.ug || 0, um = obj.um || 0;
             const ud = obj.ud || 0, uu = obj.uu || 0;
 
             if (ur || ul || ug || um || ud || uu) {
                 v.forEach(p => {
-                    // Вытягивание по X (Вправо / Влево)
                     if (p.x > 0 && s) p.x = (p.x / s) * (s + ur);
                     else if (p.x < 0 && s) p.x = (p.x / s) * (s + ul);
                     
-                    // Вытягивание по Y (Вниз / Вверх)
                     if (p.y > 0 && sy) p.y = (p.y / sy) * (sy + ud);
                     else if (p.y < 0 && sy) p.y = (p.y / sy) * (sy + uu);
                     
-                    // Вытягивание по Z (Вперед / Назад)
                     if (p.z > 0 && s) p.z = (p.z / s) * (s + ug);
                     else if (p.z < 0 && s) p.z = (p.z / s) * (s + um);
                 });
             }
 
-            // 3. Если это картинка, отрисовываем и переходим к следующему объекту
             if (obj.type === 'image') {
                 const pts = v.map(p => this.project(p, obj));
                 if (obj.tex && obj.tex.complete) {
@@ -277,29 +353,37 @@ class OmmModel extends HTMLElement {
                 return;
             }
 
-            // 4. Отрисовка всех остальных 3D полигонов
             const pts = v.map(p => this.project(p, obj));
             faces.forEach((f, i) => {
                 const p1 = pts[f[0]], p2 = pts[f[1]], p3 = pts[f[2]];
                 
-                // Backface culling
                 const isVisible = (p2.x-p1.x)*(p3.y-p1.y) - (p2.y-p1.y)*(p3.x-p1.x) < 0;
                 
                 if (isVisible || obj.type === 'triangle') {
-                    if (obj.type === 'cube' && obj.tex && obj.tex.complete && f.length === 4) {
-                        const p4 = pts[f[3]];
-                        this.drawTexturedTriangle(p1, p2, p3, 0, 0, obj.tex.width, 0, obj.tex.width, obj.tex.height, obj.tex);
-                        this.drawTexturedTriangle(p1, p3, p4, 0, 0, obj.tex.width, obj.tex.height, 0, obj.tex.height, obj.tex);
+                    if (obj.tex && obj.tex.complete) {
+                        const w = obj.tex.width;
+                        const h = obj.tex.height;
+                        
+                        if (f.length === 4) {
+                            const p4 = pts[f[3]];
+                            this.drawTexturedTriangle(p1, p2, p3, 0, 0, w, 0, w, h, obj.tex);
+                            this.drawTexturedTriangle(p1, p3, p4, 0, 0, w, h, 0, h, obj.tex);
+                        } else if (f.length === 3) {
+                            this.drawTexturedTriangle(p1, p2, p3, w/2, 0, w, h, 0, h, obj.tex);
+                        }
                     } else {
                         this.ctx.beginPath();
                         f.forEach((idx, j) => j===0 ? this.ctx.moveTo(pts[idx].x, pts[idx].y) : this.ctx.lineTo(pts[idx].x, pts[idx].y));
                         this.ctx.closePath();
                         
                         const rgb = obj.col.split(',');
-                        let sh = 0.6;
-                        if (obj.type === 'sphere') sh = 0.4 + (i % 8) * 0.05;
-                        else if (obj.type === 'cylinder') sh = 0.5 + (i % 10) * 0.04;
-                        else sh = 0.6 + (i % faces.length * 0.08);
+                        
+                        let sh = 1.0; 
+                        if (obj.type === 'sphere') sh = 0.8 + (i % 8) * 0.05;
+                        else if (obj.type === 'cylinder') sh = 0.85 + (i % 10) * 0.04;
+                        else sh = 0.85 + (i % faces.length * 0.05);
+                        
+                        sh = Math.min(1.0, sh);
 
                         this.ctx.fillStyle = `rgb(${Math.floor(rgb[0]*sh)},${Math.floor(rgb[1]*sh)},${Math.floor(rgb[2]*sh)})`;
                         this.ctx.fill();

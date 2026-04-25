@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OMM Studio Pro v2.2</title>
+    <title>OMM Studio Pro v2.3 | Animation Update</title>
     <style>
         :root {
             --bg: #0d0d0d;
@@ -13,6 +13,7 @@
             --border: #262626;
             --red: #ff5252;
             --stretch: #9c27b0;
+            --anim: #4caf50;
         }
 
         body, html {
@@ -45,7 +46,6 @@
             align-items: center;
         }
 
-        /* Стилизация выпадающего списка */
         select {
             background: #2a2a2a;
             border: 1px solid var(--border);
@@ -85,6 +85,9 @@
         .btn-stretch { border-color: var(--stretch); }
         .btn-stretch:hover { background: #2d1a2d; border-color: #e040fb; }
         
+        .btn-anim { border-color: var(--anim); color: var(--anim); }
+        .btn-anim:hover { background: #1a2d1a; }
+
         .danger { color: var(--red); }
         .danger:hover { background: #2d1a1a; border-color: var(--red); }
 
@@ -153,24 +156,25 @@
             <button class="btn-stretch" onclick="addParam('ud(40)')">↓ UD</button>
             <button class="btn-stretch" onclick="addParam('ug(40)')">↗ UG</button>
             <button class="btn-stretch" onclick="addParam('um(40)')">↙ UM</button>
+            <button class="btn-anim" onclick="addParam('animation(x-100 y0 z0 rr0, x100 y-50 z200 rr180)')">✨ Анимация</button>
         </div>
         <textarea id="mainEditor" spellcheck="false">cube3
 scale(1.5)
 color(0, 229, 255)
-ur(60) uu(30)
-ru(20) rr(45)
+animation(x-100 rr0, x100 rr360)
 
 sphere3
 y(-120)
 scale(0.8)
-color(255, 100, 255)</textarea>
+color(255, 100, 255)
+animation(y-150 scale0.5, y-100 scale1.2)</textarea>
     </div>
 
     <div class="preview-side">
         <omm-model id="viewer" autorate></omm-model>
         <div class="overlay-info">
-            <div style="color: var(--accent); font-weight: bold;">OMM CORE v2.2</div>
-            <div>Multi-Shape Rendering: ACTIVE</div>
+            <div style="color: var(--accent); font-weight: bold;">OMM CORE v2.3</div>
+            <div>Animation Engine: ACTIVE</div>
             <div id="status">Status: Online</div>
         </div>
     </div>
@@ -189,6 +193,7 @@ class OmmModel extends HTMLElement {
         this.textures = {};
         this.focal = 600;
         this.isAnimating = false;
+        this.animRequested = false;
     }
 
     connectedCallback() {
@@ -207,11 +212,17 @@ class OmmModel extends HTMLElement {
 
     updateModel(text) {
         this.parse(text || this.textContent.trim());
+        if (this.isAnimating && !this.animRequested) {
+            this.animRequested = true;
+            this.animate();
+        }
     }
 
     parse(txt) {
         this.objects = [];
+        this.isAnimating = this.hasAttribute('autorate');
         let current = null;
+
         txt.split('\n').forEach(l => {
             l = l.trim();
             if (!l || l.startsWith('//')) return;
@@ -223,7 +234,7 @@ class OmmModel extends HTMLElement {
                 if (l.includes(':')) sy = 1/parseFloat(l.split(':')[1]);
                 current = { 
                     type: typeStr.replace('3', ''), 
-                    x:0, y:0, z:0, s:50, sy, rx:0, ry:0, col:'150,150,150', tex:null,
+                    x:0, y:0, z:0, s:50, baseS:50, sy, rx:0, ry:0, col:'150,150,150', tex:null,
                     ur:0, ul:0, ug:0, um:0, ud:0, uu:0 
                 };
                 this.objects.push(current);
@@ -233,13 +244,39 @@ class OmmModel extends HTMLElement {
                 const x = val('x'), y = val('y'), z = val('z'), s = val('scale'), rr = val('rr'), ru = val('ru'), c = val('color'), t = val('texture');
                 const ur = val('ur'), ul = val('ul'), ug = val('ug'), um = val('um'), ud = val('ud'), uu = val('uu');
 
-                if (x) current.x = parseFloat(x); if (y) current.y = parseFloat(y); if (z) current.z = parseFloat(z);
-                if (s) current.s *= parseFloat(s); if (rr) current.ry = parseFloat(rr) * Math.PI/180;
+                if (x) current.x = parseFloat(x);
+                if (y) current.y = parseFloat(y);
+                if (z) current.z = parseFloat(z);
+                if (s) { current.baseS = 50 * parseFloat(s); current.s = current.baseS; }
+                if (rr) current.ry = parseFloat(rr) * Math.PI/180;
                 if (ru) current.rx = parseFloat(ru) * Math.PI/180;
-                if (c) current.col = c; if (t) current.tex = this.getImg(t);
+                if (c) current.col = c;
+                if (t) current.tex = this.getImg(t);
+                
                 if (ur) current.ur = parseFloat(ur); if (ul) current.ul = parseFloat(ul);
                 if (ug) current.ug = parseFloat(ug); if (um) current.um = parseFloat(um);
                 if (ud) current.ud = parseFloat(ud); if (uu) current.uu = parseFloat(uu);
+
+                // Парсер новой функции анимации
+                const animMatch = l.match(/animation\((.+?)\)/);
+                if (animMatch) {
+                    current.anim = [];
+                    current.animIndex = 0;
+                    current.animSpeed = 2.5;
+                    const frames = animMatch[1].split(',');
+                    frames.forEach(frame => {
+                        const kf = {};
+                        const props = frame.match(/([a-z]+)(-?[\d.]+)/g);
+                        if (props) {
+                            props.forEach(p => {
+                                const m = p.match(/([a-z]+)(-?[\d.]+)/);
+                                if (m) kf[m[1]] = parseFloat(m[2]);
+                            });
+                            current.anim.push(kf);
+                        }
+                    });
+                    this.isAnimating = true;
+                }
             }
         });
         this.render();
@@ -286,8 +323,42 @@ class OmmModel extends HTMLElement {
     }
 
     animate() {
-        if (!this.isAnimating) return;
-        this.camera.ry += 0.01;
+        if (!this.isAnimating) { this.animRequested = false; return; }
+        
+        if (this.hasAttribute('autorate')) this.camera.ry += 0.01;
+
+        this.objects.forEach(obj => {
+            if (obj.anim && obj.anim.length > 0) {
+                const target = obj.anim[obj.animIndex];
+                const speed = obj.animSpeed;
+
+                const tx = target.x !== undefined ? target.x : obj.x;
+                const ty = target.y !== undefined ? target.y : obj.y;
+                const tz = target.z !== undefined ? target.z : obj.z;
+                const ts = target.scale !== undefined ? 50 * target.scale : obj.baseS;
+                const trx = target.ru !== undefined ? target.ru * Math.PI/180 : obj.rx;
+                const try_ = target.rr !== undefined ? target.rr * Math.PI/180 : obj.ry;
+
+                const dx = tx - obj.x, dy = ty - obj.y, dz = tz - obj.z;
+                const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+
+                if (dist > speed) {
+                    obj.x += (dx/dist)*speed; obj.y += (dy/dist)*speed; obj.z += (dz/dist)*speed;
+                } else {
+                    obj.x = tx; obj.y = ty; obj.z = tz;
+                }
+
+                // Плавный масштаб и поворот
+                if (Math.abs(ts - obj.s) > 1) obj.s += Math.sign(ts - obj.s) * 1;
+                if (Math.abs(trx - obj.rx) > 0.03) obj.rx += Math.sign(trx - obj.rx) * 0.03;
+                if (Math.abs(try_ - obj.ry) > 0.03) obj.ry += Math.sign(try_ - obj.ry) * 0.03;
+
+                if (dist <= speed && Math.abs(ts - obj.s) <= 1 && Math.abs(try_ - obj.ry) < 0.05) {
+                    obj.animIndex = (obj.animIndex + 1) % obj.anim.length;
+                }
+            }
+        });
+
         this.render();
         requestAnimationFrame(() => this.animate());
     }
@@ -344,7 +415,6 @@ class OmmModel extends HTMLElement {
                 v = [{x:-s,y:-sy,z:0},{x:s,y:-sy,z:0},{x:s,y:sy,z:0},{x:-s,y:sy,z:0}];
             }
 
-            // Применяем вытягивание
             v.forEach(p => {
                 if (p.x > 0) p.x += obj.ur; else if (p.x < 0) p.x -= obj.ul;
                 if (p.y > 0) p.y += obj.ud; else if (p.y < 0) p.y -= obj.uu;
@@ -352,7 +422,6 @@ class OmmModel extends HTMLElement {
             });
 
             const pts = v.map(p => this.project(p, obj));
-
             if (obj.type === 'image') {
                 if (obj.tex && obj.tex.complete) {
                     this.drawTexturedTriangle(pts[0], pts[1], pts[2], 0, 0, obj.tex.width, 0, obj.tex.width, obj.tex.height, obj.tex);
@@ -364,7 +433,7 @@ class OmmModel extends HTMLElement {
             faces.forEach((f, i) => {
                 const p1 = pts[f[0]], p2 = pts[f[1]], p3 = pts[f[2]];
                 if ((p2.x-p1.x)*(p3.y-p1.y) - (p2.y-p1.y)*(p3.x-p1.x) < 0 || obj.type === 'triangle') {
-                    if (obj.type === 'cube' && obj.tex && obj.tex.complete && f.length === 4) {
+                    if (obj.tex && obj.tex.complete && f.length === 4) {
                         const p4 = pts[f[3]];
                         this.drawTexturedTriangle(p1, p2, p3, 0, 0, obj.tex.width, 0, obj.tex.width, obj.tex.height, obj.tex);
                         this.drawTexturedTriangle(p1, p3, p4, 0, 0, obj.tex.width, obj.tex.height, 0, obj.tex.height, obj.tex);
@@ -372,7 +441,7 @@ class OmmModel extends HTMLElement {
                         this.ctx.beginPath();
                         f.forEach((idx, j) => j==0 ? this.ctx.moveTo(pts[idx].x, pts[idx].y) : this.ctx.lineTo(pts[idx].x, pts[idx].y));
                         this.ctx.closePath();
-                        const rgb = obj.col.split(',');
+                        const rgb = (obj.col.includes(',') ? obj.col : '150,150,150').split(',');
                         let sh = 0.5 + (i % faces.length * 0.1);
                         this.ctx.fillStyle = `rgb(${rgb[0]*sh},${rgb[1]*sh},${rgb[2]*sh})`;
                         this.ctx.fill();
@@ -407,9 +476,11 @@ function clearEditor() {
 }
 
 function toggleRotation() {
+    if (view.hasAttribute('autorate')) view.removeAttribute('autorate');
+    else view.setAttribute('autorate', '');
     view.isAnimating = !view.isAnimating;
     document.getElementById('rotBtn').classList.toggle('active');
-    if(view.isAnimating) view.animate();
+    view.updateModel(area.value);
 }
 
 function uploadTex(input) {
