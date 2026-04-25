@@ -37,7 +37,8 @@ class OmmModel extends HTMLElement {
         this.ctx = this.canvas.getContext('2d');
         this.shadowRoot.appendChild(this.canvas);
         
-        this.camera = { z: 600, rx: 0.4, ry: 0.4 };
+        // Добавили cx и cy для перемещения камеры (pan)
+        this.camera = { z: 600, rx: 0.4, ry: 0.4, cx: 0, cy: 0 };
         this.objects = [];
         this.textures = {};
         this.focal = 600;
@@ -50,10 +51,116 @@ class OmmModel extends HTMLElement {
         this.canvas.style.height = '100%';
         this.canvas.style.display = 'block';
         
+        // Инициализация свободного управления, если есть атрибут freer
+        if (this.hasAttribute('freer')) {
+            this.initControls();
+        }
+
         setTimeout(() => {
             this.resize();
             this.loadContent();
         }, 50);
+    }
+
+    initControls() {
+        let isDragging = false;
+        let dragMode = 0; // 0 = Вращение, 1 = Перемещение (Pan)
+        let lastX = 0, lastY = 0;
+        let initialPinchDist = null;
+        let initialZ = null;
+
+        this.canvas.style.cursor = 'grab';
+
+        const startDrag = (x, y, btn) => {
+            isDragging = true;
+            lastX = x;
+            lastY = y;
+            // Правая кнопка мыши (2) или колесико (1) активируют режим перемещения
+            dragMode = (btn === 2 || btn === 1) ? 1 : 0;
+            this.canvas.style.cursor = dragMode === 0 ? 'grabbing' : 'move';
+        };
+
+        const doDrag = (x, y) => {
+            if (!isDragging) return;
+            const dx = x - lastX;
+            const dy = y - lastY;
+            lastX = x;
+            lastY = y;
+
+            if (dragMode === 0) {
+                // Вращение (Rotation)
+                this.camera.ry -= dx * 0.01;
+                this.camera.rx += dy * 0.01;
+            } else {
+                // Перемещение (Panning)
+                this.camera.cx += dx;
+                this.camera.cy += dy;
+            }
+            
+            if (!this.isAnimating) this.render();
+        };
+
+        const endDrag = () => { 
+            isDragging = false; 
+            this.canvas.style.cursor = 'grab';
+        };
+
+        // --- Управление мышью ---
+        this.canvas.addEventListener('mousedown', (e) => startDrag(e.clientX, e.clientY, e.button));
+        // Вешаем слушатели на window, чтобы мышь не "отлипала", если уходит за пределы канваса
+        window.addEventListener('mousemove', (e) => { if (isDragging) doDrag(e.clientX, e.clientY); });
+        window.addEventListener('mouseup', endDrag);
+        
+        // Блокируем контекстное меню браузера при нажатии ПКМ
+        this.canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+        // Зумирование колесиком мыши
+        this.canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            this.camera.z += e.deltaY * 0.5;
+            // Ограничиваем приближение, чтобы не "провалиться" сквозь объекты
+            if (this.camera.z < -this.focal + 10) this.camera.z = -this.focal + 10;
+            if (!this.isAnimating) this.render();
+        }, { passive: false });
+
+        // --- Управление на смартфонах (Тач-события) ---
+        this.canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 1) {
+                // Один палец - вращение
+                startDrag(e.touches[0].clientX, e.touches[0].clientY, 0);
+            } else if (e.touches.length === 2) {
+                // Два пальца - зумирование (щипок)
+                isDragging = false;
+                initialPinchDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX, 
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                initialZ = this.camera.z;
+            }
+        }, { passive: false });
+
+        this.canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (e.touches.length === 1 && isDragging) {
+                doDrag(e.touches[0].clientX, e.touches[0].clientY);
+            } else if (e.touches.length === 2 && initialPinchDist) {
+                const currentPinchDist = Math.hypot(
+                    e.touches[0].clientX - e.touches[1].clientX, 
+                    e.touches[0].clientY - e.touches[1].clientY
+                );
+                const scale = initialPinchDist / currentPinchDist;
+                this.camera.z = initialZ * scale;
+                // Ограничитель для тача
+                if (this.camera.z < -this.focal + 10) this.camera.z = -this.focal + 10;
+                if (!this.isAnimating) this.render();
+            }
+        }, { passive: false });
+
+        this.canvas.addEventListener('touchend', () => { 
+            endDrag(); 
+            initialPinchDist = null;
+        });
     }
 
     async loadContent() {
@@ -75,7 +182,7 @@ class OmmModel extends HTMLElement {
             this.parse(content);
         }
 
-        // Запускаем анимацию, если есть атрибут autorate ИЛИ если в коде найдены анимации
+        // Запускаем анимацию, если есть атрибуты
         if (this.hasAttribute('autorate') || this.isAnimating) {
             this.isAnimating = true;
             if (!this.animationRequested) {
@@ -135,18 +242,15 @@ class OmmModel extends HTMLElement {
                 if (ud) current.ud = parseFloat(ud);
                 if (uu) current.uu = parseFloat(uu);
 
-                // --- НОВАЯ ФУНКЦИЯ: ПАРСЕР АНИМАЦИЙ ---
                 const animMatch = l.match(/animation\((.+?)\)/);
                 if (animMatch) {
                     current.anim = [];
                     current.animIndex = 0;
-                    current.animSpeed = 2.0; // Скорость перемещения
+                    current.animSpeed = 2.0; 
                     
-                    // Разбиваем точки по запятым
                     const frames = animMatch[1].split(',');
                     frames.forEach(frame => {
                         const kf = {};
-                        // Ищем пары "буква+число", например x10, y-5.5, rr45
                         const props = frame.match(/([a-z]+)(-?[\d.]+)/g);
                         if (props) {
                             props.forEach(p => {
@@ -156,7 +260,7 @@ class OmmModel extends HTMLElement {
                             current.anim.push(kf);
                         }
                     });
-                    this.isAnimating = true; // Авто-старт цикла анимации
+                    this.isAnimating = true; 
                 }
             }
         });
@@ -182,7 +286,14 @@ class OmmModel extends HTMLElement {
         let rx = tx * Math.cos(this.camera.ry) + rz * Math.sin(this.camera.ry);
         rz = -tx * Math.sin(this.camera.ry) + rz * Math.cos(this.camera.ry);
         const sc = this.focal / (this.focal + rz + this.camera.z);
-        return { x: rx * sc + this.canvas.width/2, y: ry * sc + this.canvas.height/2, z: rz, sc };
+        
+        // Добавили смещение cx и cy из объекта camera
+        return { 
+            x: rx * sc + this.canvas.width/2 + this.camera.cx, 
+            y: ry * sc + this.canvas.height/2 + this.camera.cy, 
+            z: rz, 
+            sc 
+        };
     }
 
     drawTexturedTriangle(p1, p2, p3, u1, v1, u2, v2, u3, v3, img) {
@@ -209,55 +320,46 @@ class OmmModel extends HTMLElement {
     animate() {
         if (!this.isAnimating) return;
         
-        // Вращение камеры, если задан атрибут autorate
         if (this.hasAttribute('autorate')) {
             this.camera.ry += 0.01;
         }
 
-        // --- ЛОГИКА ПОЛЕТА МОДЕЛЕЙ ПО ТОЧКАМ ---
         this.objects.forEach(obj => {
             if (obj.anim && obj.anim.length > 0) {
                 const target = obj.anim[obj.animIndex];
                 const speed = obj.animSpeed;
-                const rotSpeed = 0.05; // Скорость поворота
+                const rotSpeed = 0.05; 
 
-                // Берем целевые координаты (если в точке не указан X, остаемся на текущем X)
                 const tx = target.x !== undefined ? target.x : obj.x;
                 const ty = target.y !== undefined ? target.y : obj.y;
                 const tz = target.z !== undefined ? target.z : obj.z;
                 
-                // Целевые углы (переводим градусы в радианы)
                 const trx = target.ru !== undefined ? target.ru * Math.PI/180 : obj.rx;
                 const try_ = target.rr !== undefined ? target.rr * Math.PI/180 : obj.ry;
 
-                // Вычисляем расстояние до точки
                 const dx = tx - obj.x;
                 const dy = ty - obj.y;
                 const dz = tz - obj.z;
                 const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
 
-                // Движемся к точке с постоянной скоростью
                 if (dist > speed) {
                     obj.x += (dx / dist) * speed;
                     obj.y += (dy / dist) * speed;
                     obj.z += (dz / dist) * speed;
                 } else {
-                    // Примагничиваемся, если оказались очень близко
                     obj.x = tx; obj.y = ty; obj.z = tz;
                 }
 
-                // Плавный поворот
                 if (Math.abs(trx - obj.rx) > rotSpeed) obj.rx += Math.sign(trx - obj.rx) * rotSpeed;
                 else obj.rx = trx;
 
                 if (Math.abs(try_ - obj.ry) > rotSpeed) obj.ry += Math.sign(try_ - obj.ry) * rotSpeed;
                 else obj.ry = try_;
 
-                // Проверяем, достигли ли мы точки (и по координатам, и по повороту)
                 if (dist <= speed && Math.abs(trx - obj.rx) <= rotSpeed && Math.abs(try_ - obj.ry) <= rotSpeed) {
-                    obj.animIndex++; // Переключаем на следующую точку
+                    obj.animIndex++; 
                     if (obj.animIndex >= obj.anim.length) {
-                        obj.animIndex = 0; // Зацикливаем анимацию
+                        obj.animIndex = 0; 
                     }
                 }
             }
