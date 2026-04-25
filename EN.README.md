@@ -14,12 +14,11 @@
    <omm-model src="my_model.omm" autorate></omm-model>
 
 ### <omm-model>
-to this tag you can add so *`omm-model src="model.omm" here
+to this tag you can add so *`omm-model src="model.omm"` here
 
 can be added
 *`autorate` - model itself spinning
 *`freer` - full free rotation, reduction of distance
-   ```
 
 ---
 
