@@ -35,6 +35,20 @@ A `.omm` file is a text document. Each new shape starts with a keyword.
 * `triangle3` — flat triangle.
 * `image3` — flat surface (billboard) in 3D space. Perfect for icons or grass.
 
+***Creation of a few figures one ***
+
+`Mono( 
+cube3
+color (150, 150, 150)
+y(200)
+spheres3
+color (150, 150, 150)
+)`
+
+it will be considered as one model, animations will be courteous 
+these two figures will be twisted as one
+
+
 ### 2. Transformations
 Parameters are written under the shape or on one line:
 * `x(n) y(n) z(n)` — position. In OMM `y` goes upward (negative values raise the object).
