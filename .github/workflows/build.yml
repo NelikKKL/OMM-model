@@ -1,0 +1,87 @@
+name: Build & Release
+
+on:
+  push:
+    branches: [main]
+    tags:     ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write   # нужно для создания release
+
+jobs:
+  # ── Type-check + build ───────────────────────────────────────────────────────
+  build:
+    name: Type-check & Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Type-check
+        run: npm run type-check
+
+      - name: Build
+        run: npm run build
+
+      - name: Show dist sizes
+        run: |
+          echo "=== dist/ ==="
+          ls -lh dist/
+
+      # Сохраняем артефакты, чтобы другие jobs и PR-проверки могли скачать
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  # ── Release (только при пуше тега vX.Y.Z) ───────────────────────────────────
+  release:
+    name: GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download dist
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/omm-core.js
+            dist/omm-core.min.js
+            dist/omm-core.esm.js
+          generate_release_notes: true
+          body: |
+            ## Installation
+
+            ### CDN / script tag
+            ```html
+            <script src="omm-core.min.js"></script>
+            ```
+
+            ### ESM / bundler
+            ```js
+            import 'omm-core.esm.js';
+            ```
