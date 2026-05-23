@@ -6,6 +6,15 @@ import {
   buildSphereGeo, buildCylinderGeo,
 } from '../geometry';
 
+interface DrawableFace {
+  pts: ProjectedPoint[];
+  f: number[];           // indices into pts[]
+  z: number;             // average Z for sorting
+  obj: OmmObject;
+  faceIndex: number;
+  totalFaces: number;
+}
+
 export class Renderer {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly canvas: HTMLCanvasElement;
@@ -80,45 +89,9 @@ export class Renderer {
     ctx.restore();
   }
 
-  // ── Main render ──────────────────────────────────────────────────────────────
+  // ── Collect all projected faces from one object ───────────────────────────
 
-  render(
-    objects: OmmObject[],
-    monoGroups: Record<number, MonoGroup>,
-    camera: Camera,
-  ): void {
-    const ctx = this.ctx;
-    const W = this.canvas.width, H = this.canvas.height;
-    ctx.clearRect(0, 0, W, H);
-
-    // Cache camera trig once per frame
-    this.cam.srx = Math.sin(camera.rx);
-    this.cam.crx = Math.cos(camera.rx);
-    this.cam.sry = Math.sin(camera.ry);
-    this.cam.cry = Math.cos(camera.ry);
-
-    // Compute mono group average Z for depth sorting
-    const monoGroupZ: Record<number, number> = {};
-    for (const id in monoGroups) {
-      const members = monoGroups[id].members;
-      let zSum = 0;
-      for (const m of members) zSum += m.z;
-      monoGroupZ[id] = zSum / members.length;
-    }
-
-    // Depth sort (back-to-front, painter's algorithm)
-    objects.sort((a, b) => {
-      const az = a.monoId != null ? (monoGroupZ[a.monoId] ?? a.z) : a.z;
-      const bz = b.monoId != null ? (monoGroupZ[b.monoId] ?? b.z) : b.z;
-      return bz - az;
-    });
-
-    for (const obj of objects) {
-      this.renderObject(obj, camera);
-    }
-  }
-
-  private renderObject(obj: OmmObject, camera: Camera): void {
+  private collectFaces(obj: OmmObject, camera: Camera): DrawableFace[] {
     const { type } = obj;
     let rawV, faces: Face[] | null;
 
@@ -129,7 +102,7 @@ export class Renderer {
       case 'sphere':   { const g = buildSphereGeo();   rawV = g.v; faces = g.faces; break; }
       case 'cylinder': { const g = buildCylinderGeo(); rawV = g.v; faces = g.faces; break; }
       case 'image':    rawV = IMAGE_V; faces = null; break;
-      default: return;
+      default: return [];
     }
 
     const s = obj.s, sy = s * obj.sy;
@@ -152,62 +125,118 @@ export class Renderer {
       return this.projectVertex(vx, vy, vz, cosRx, sinRx, cosRy, sinRy, obj.x, obj.y, obj.z, camera);
     });
 
-    // Image: two textured triangles
+    // Image: special case — two triangles, not in the face list
     if (type === 'image') {
-      if (obj.tex?.complete) {
-        const tw = obj.tex.width, th = obj.tex.height;
-        this.drawTexturedTriangle(pts[0], pts[1], pts[2],  0,  0, tw,  0, tw, th, obj.tex);
-        this.drawTexturedTriangle(pts[0], pts[2], pts[3],  0,  0, tw, th,  0, th, obj.tex);
+      if (!obj.tex?.complete) return [];
+      // Return as drawable faces with a special marker (faceIndex = -1)
+      const zAvg1 = (pts[0].z + pts[1].z + pts[2].z) / 3;
+      const zAvg2 = (pts[0].z + pts[2].z + pts[3].z) / 3;
+      return [
+        { pts, f: [0, 1, 2], z: zAvg1, obj, faceIndex: -1, totalFaces: 1 },
+        { pts, f: [0, 2, 3], z: zAvg2, obj, faceIndex: -2, totalFaces: 1 },
+      ];
+    }
+
+    const result: DrawableFace[] = [];
+    const nf = faces!.length;
+    for (let i = 0; i < nf; i++) {
+      const f = faces![i];
+      let zSum = 0;
+      for (const k of f) zSum += pts[k].z;
+      result.push({ pts, f, z: zSum / f.length, obj, faceIndex: i, totalFaces: nf });
+    }
+    return result;
+  }
+
+  // ── Draw a single face ────────────────────────────────────────────────────
+
+  private drawFace(fd: DrawableFace): void {
+    const { pts, f, obj } = fd;
+    const ctx = this.ctx;
+
+    const p1 = pts[f[0]], p2 = pts[f[1]], p3 = pts[f[2]];
+    const hasTex = obj.tex?.complete ?? false;
+
+    // Image faces
+    if (fd.faceIndex === -1) {
+      if (hasTex) {
+        const tw = obj.tex!.width, th = obj.tex!.height;
+        this.drawTexturedTriangle(p1, p2, p3, 0, 0, tw, 0, tw, th, obj.tex!);
+      }
+      return;
+    }
+    if (fd.faceIndex === -2) {
+      if (hasTex) {
+        const tw = obj.tex!.width, th = obj.tex!.height;
+        this.drawTexturedTriangle(p1, p3, pts[f[2]], 0, 0, tw, th, 0, th, obj.tex!);
       }
       return;
     }
 
-    // Face depth sort
-    const nf = faces!.length;
-    const sortedFaces = faces!.map((f, i) => {
-      let zSum = 0;
-      for (const k of f) zSum += pts[k].z;
-      return { f, i, z: zSum / f.length };
-    }).sort((a, b) => b.z - a.z);
-
-    const hasTex = obj.tex?.complete ?? false;
-    const tw = hasTex ? obj.tex!.width  : 0;
-    const th = hasTex ? obj.tex!.height : 0;
-    const ctx = this.ctx;
-    const rgb = obj.rgb;
-
-    for (const fd of sortedFaces) {
-      const f = fd.f;
-      const p1 = pts[f[0]], p2 = pts[f[1]], p3 = pts[f[2]];
-
-      if (hasTex) {
-        if (f.length === 4) {
-          const p4 = pts[f[3]];
-          this.drawTexturedTriangle(p1, p2, p3,  0,    0,  tw,   0, tw, th, obj.tex!);
-          this.drawTexturedTriangle(p1, p3, p4,  0,    0,  tw,  th,  0, th, obj.tex!);
-        } else {
-          this.drawTexturedTriangle(p1, p2, p3, tw * 0.5, 0, tw, th,  0, th, obj.tex!);
-        }
+    if (hasTex) {
+      const tw = obj.tex!.width, th = obj.tex!.height;
+      if (f.length === 4) {
+        const p4 = pts[f[3]];
+        this.drawTexturedTriangle(p1, p2, p3,       0,    0,  tw,   0, tw, th, obj.tex!);
+        this.drawTexturedTriangle(p1, p3, p4,       0,    0,  tw,  th,  0, th, obj.tex!);
       } else {
-        ctx.beginPath();
-        ctx.moveTo(p1.x, p1.y);
-        ctx.lineTo(p2.x, p2.y);
-        ctx.lineTo(p3.x, p3.y);
-        if (f.length === 4) ctx.lineTo(pts[f[3]].x, pts[f[3]].y);
-        ctx.closePath();
-
-        // Face shading (index-based approximation)
-        let sh: number;
-        if      (type === 'sphere')   sh = 0.8  + (fd.i % 8)  * 0.05;
-        else if (type === 'cylinder') sh = 0.85 + (fd.i % 10) * 0.04;
-        else                          sh = 0.85 + (fd.i % nf) * 0.05;
-        if (sh > 1) sh = 1;
-
-        ctx.fillStyle   = `rgb(${rgb[0] * sh | 0},${rgb[1] * sh | 0},${rgb[2] * sh | 0})`;
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(0,0,0,0.15)';
-        ctx.stroke();
+        this.drawTexturedTriangle(p1, p2, p3, tw * 0.5, 0, tw, th,  0, th, obj.tex!);
       }
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.lineTo(p3.x, p3.y);
+      if (f.length === 4) ctx.lineTo(pts[f[3]].x, pts[f[3]].y);
+      ctx.closePath();
+
+      // Face shading (index-based approximation)
+      const { faceIndex: fi, totalFaces: nf } = fd;
+      const type = obj.type;
+      let sh: number;
+      if      (type === 'sphere')   sh = 0.8  + (fi % 8)  * 0.05;
+      else if (type === 'cylinder') sh = 0.85 + (fi % 10) * 0.04;
+      else                          sh = 0.85 + (fi % nf) * 0.05;
+      if (sh > 1) sh = 1;
+
+      const rgb = obj.rgb;
+      ctx.fillStyle   = `rgb(${rgb[0] * sh | 0},${rgb[1] * sh | 0},${rgb[2] * sh | 0})`;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.15)';
+      ctx.stroke();
+    }
+  }
+
+  // ── Main render ──────────────────────────────────────────────────────────────
+
+  render(
+    objects: OmmObject[],
+    monoGroups: Record<number, MonoGroup>,
+    camera: Camera,
+  ): void {
+    const ctx = this.ctx;
+    const W = this.canvas.width, H = this.canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    // Cache camera trig once per frame
+    this.cam.srx = Math.sin(camera.rx);
+    this.cam.crx = Math.cos(camera.rx);
+    this.cam.sry = Math.sin(camera.ry);
+    this.cam.cry = Math.cos(camera.ry);
+
+    // Collect ALL faces from ALL objects into one flat list
+    const allFaces: DrawableFace[] = [];
+    for (const obj of objects) {
+      const faces = this.collectFaces(obj, camera);
+      for (const f of faces) allFaces.push(f);
+    }
+
+    // Global depth sort: back-to-front (painter's algorithm per triangle)
+    allFaces.sort((a, b) => b.z - a.z);
+
+    // Draw all faces in depth order
+    for (const fd of allFaces) {
+      this.drawFace(fd);
     }
   }
 }
