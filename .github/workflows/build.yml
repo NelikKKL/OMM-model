@@ -3,15 +3,15 @@ name: Build & Release
 on:
   push:
     branches: [main]
-    tags:     ['v*']
+    tags: ['v*']
   pull_request:
     branches: [main]
 
 permissions:
-  contents: write   # нужно для создания release
+  contents: write
 
 jobs:
-  # ── Type-check + build ───────────────────────────────────────────────────────
+  # ── Build ────────────────────────────────────────────────────────────────────
   build:
     name: Type-check & Build
     runs-on: ubuntu-latest
@@ -39,15 +39,26 @@ jobs:
           echo "=== dist/ ==="
           ls -lh dist/
 
-      # Сохраняем артефакты, чтобы другие jobs и PR-проверки могли скачать
-      - name: Upload dist
+      - name: Upload dist artifact
         uses: actions/upload-artifact@v4
         with:
           name: dist
           path: dist/
           retention-days: 7
 
-  # ── Release (только при пуше тега vX.Y.Z) ───────────────────────────────────
+      # Коммитим dist/ обратно в main, чтобы jsDelivr мог отдавать файлы
+      - name: Commit dist to repository
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add dist/
+          git diff --cached --quiet && echo "dist/ not changed, skipping" || (
+            git commit -m "chore: update dist [skip ci]"
+            git push
+          )
+
+  # ── Release (только при теге vX.Y.Z) ─────────────────────────────────────────
   release:
     name: GitHub Release
     needs: build
@@ -73,14 +84,14 @@ jobs:
             dist/omm-core.esm.js
           generate_release_notes: true
           body: |
-            ## Installation
+            ## CDN
 
-            ### CDN / script tag
+            ### Script tag
             ```html
-            <script src="omm-core.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/gh/NelikKKL/OMM-model@${{ github.ref_name }}/dist/omm-core.min.js"></script>
             ```
 
-            ### ESM / bundler
+            ### ESM
             ```js
-            import 'omm-core.esm.js';
+            import 'https://cdn.jsdelivr.net/gh/NelikKKL/OMM-model@${{ github.ref_name }}/dist/omm-core.esm.js';
             ```

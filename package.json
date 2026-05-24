@@ -4,6 +4,7 @@
   "description": "Ultra-lightweight 3D model engine for web — zero dependencies",
   "main": "dist/omm-core.js",
   "module": "dist/omm-core.esm.js",
+  "browser": "dist/omm-core.min.js",
   "types": "dist/index.d.ts",
   "files": ["dist"],
   "scripts": {
