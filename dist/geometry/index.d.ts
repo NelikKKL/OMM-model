@@ -1,0 +1,10 @@
+import type { Vec3, Face, Geometry } from '../types';
+export declare const CUBE_V: Vec3[];
+export declare const CUBE_F: Face[];
+export declare const PYRAMID_V: Vec3[];
+export declare const PYRAMID_F: Face[];
+export declare const TRIANGLE_V: Vec3[];
+export declare const TRIANGLE_F: Face[];
+export declare const IMAGE_V: Vec3[];
+export declare function buildSphereGeo(): Geometry;
+export declare function buildCylinderGeo(): Geometry;
