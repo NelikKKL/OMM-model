@@ -1,20 +1,34 @@
 # OMM (Open Match Model)
 
-[READ in English](https://github.com/NelikKKL/OMM/blob/main/EN.README.md)
+[READ in English](https://github.com/NelikKKL/OMM-model/blob/main/EN.README.md)
 
 **OMM** — это сверхлегкий формат 3D-моделей и автономный движок на чистом JavaScript. Создан для быстрой интеграции 3D-графики в веб-проекты без использования тяжелых библиотек (Zero Dependencies).
 
+## 📦 Установка
+
+### CDN (Script tag)
+```html
+<script src="https://cdn.jsdelivr.net/gh/NelikKKL/OMM-model@v2.0.0/dist/omm-core.min.js"></script>
+```
+
+### CDN (ESM)
+```js
+import 'https://cdn.jsdelivr.net/gh/NelikKKL/OMM-model@v2.0.0/dist/omm-core.esm.js';
+```
+
+### Локально
+Скачайте `omm-core.js` из [Releases](https://github.com/NelikKKL/OMM-model/releases) и подключите:
+```html
+<script src="omm-core.js"></script>
+```
+
 ## 🚀 Быстрый старт
 
-1. Поместите `omm-core.js` в папку с проектом.
-2. Подключите скрипт в конце вашего HTML:
-   ```html
-   <script src="omm-core.js"></script>
-   ```
-3. Используйте тег модели:
-   ```html
-   <omm-model src="my_model.omm" autorate></omm-model>
-   ```
+Подключите библиотеку и используйте тег модели:
+```html
+<omm-model src="my_model.omm" autorate></omm-model>
+```
+
 ### <omm-model>
 в этот тег можно добавить так *` <omm-model src="model.omm"  сюда`
 
@@ -33,7 +47,7 @@
 * `cube3 : 4` — плита (высота уменьшена в 4 раза). Цифра после `:` определяет тонкость объекта.
 * `image3` — плоская поверхность (биллборд) в 3D пространстве. Идеально для иконок или травы.
 
-***Создание из несольки фигур одну***
+***Создание из нескольких фигур одну***
 
 `mono( 
 cube3
@@ -43,7 +57,7 @@ sphere3
 color(150, 150, 150)
 )`
 
-она будет считаться как одна модель, анимации будут куртить 
+она будет считаться как одна модель, анимации будут крутить
 эти две фигуры будет крутить как одну
 
 ### 2. Трансформации
@@ -92,4 +106,4 @@ color(150, 150, 150)
 
 ## ⚠️ Технические нюансы
 * **CORS**: При работе с локальными файлами (`file://`) браузер может блокировать загрузку `.omm`. Рекомендуется использовать локальный сервер (Live Server VS Code, Node.js, python).
-* **Base64**: Использование Base64 внутри `.omm` делает файл тяжелее, но позволяет модели работать автономно без внешних картинок
+* **Base64**: Использование Base64 внутри `.omm` делает файл тяжелее, но позволяет модели работать автономно без внешних картинок.
