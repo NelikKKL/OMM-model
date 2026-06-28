@@ -9,7 +9,7 @@ use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement};
 
-use types::{Camera, OmmObject};
+use types::{Camera, OmmObject, MonoGroup};
 use parser::parse_omm;
 use renderer::Renderer;
 use animation::step_animation;
@@ -30,10 +30,6 @@ pub struct OmmEngine {
 impl OmmEngine {
     #[wasm_bindgen(constructor)]
     pub fn new() -> Self {
-        // Forward panics to console.error in debug builds
-        #[cfg(feature = "console_error_panic_hook")]
-        console_error_panic_hook::set_once();
-
         Self {
             objects:      Vec::new(),
             mono_groups:  HashMap::new(),

@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use wasm_bindgen::JsValue;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement};
 
 use crate::types::{Camera, CameraTrig, OmmObject, ShapeType, Vec3, Face};
@@ -14,9 +13,6 @@ struct Pt {
     z: f64,
 }
 
-impl From<ProjectedPoint> for Pt {
-    fn from(p: ProjectedPoint) -> Self { Pt { x: p.x, y: p.y, z: p.z } }
-}
 
 enum DrawCmd {
     /// Solid filled polygon (3 or 4 vertices)
@@ -304,11 +300,9 @@ impl Renderer {
                 let r = (rgb[0] as f64 * sh) as u8;
                 let g = (rgb[1] as f64 * sh) as u8;
                 let b = (rgb[2] as f64 * sh) as u8;
-                ctx.set_fill_style(&JsValue::from_str(
-                    &format!("rgb({r},{g},{b})")
-                ));
+                ctx.set_fill_style_str(&format!("rgb({r},{g},{b})"));
                 ctx.fill();
-                ctx.set_stroke_style(&JsValue::from_str("rgba(0,0,0,0.15)"));
+                ctx.set_stroke_style_str("rgba(0,0,0,0.15)");
                 ctx.stroke();
             }
 
