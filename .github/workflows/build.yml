@@ -11,54 +11,57 @@ permissions:
   contents: write
 
 jobs:
-  # ── Build ────────────────────────────────────────────────────────────────────
+  # ── Build ─────────────────────────────────────────────────────────────────────
   build:
-    name: Type-check & Build
+    name: wasm-pack build
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node 20
-        uses: actions/setup-node@v4
+      - name: Setup Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
         with:
-          node-version: 22
+          targets: wasm32-unknown-unknown
 
-      - name: Install deps
-        run: npm install
+      - name: Cache Rust / Cargo
+        uses: Swatinem/rust-cache@v2
 
-      - name: Type-check
-        run: npm run type-check
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Build
-        run: npm run build
+      - name: Build (release, web target)
+        run: wasm-pack build --release --target web --out-dir pkg
 
-      - name: Show dist sizes
+      - name: Copy JS component into pkg/
+        run: cp js/omm-component.js pkg/
+
+      - name: Show pkg/ sizes
         run: |
-          echo "=== dist/ ==="
-          ls -lh dist/
+          echo "=== pkg/ ==="
+          ls -lh pkg/
 
-      - name: Upload dist artifact
+      - name: Upload pkg artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/
+          name: pkg
+          path: pkg/
           retention-days: 7
 
-      # Коммитим dist/ обратно в main, чтобы jsDelivr мог отдавать файлы
-      - name: Commit dist to repository
+      # Commit pkg/ back to main so jsDelivr can serve the files
+      - name: Commit pkg/ to repository
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add dist/
-          git diff --cached --quiet && echo "dist/ not changed, skipping" || (
-            git commit -m "chore: update dist [skip ci]"
+          git add pkg/
+          git diff --cached --quiet && echo "pkg/ not changed, skipping" || (
+            git commit -m "chore: update pkg [skip ci]"
             git push
           )
 
-  # ── Release (только при теге vX.Y.Z) ─────────────────────────────────────────
+  # ── Release (tags vX.Y.Z only) ────────────────────────────────────────────────
   release:
     name: GitHub Release
     needs: build
@@ -69,29 +72,33 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download dist
+      - name: Download pkg artifact
         uses: actions/download-artifact@v4
         with:
-          name: dist
-          path: dist/
+          name: pkg
+          path: pkg/
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/omm-core.js
-            dist/omm-core.min.js
-            dist/omm-core.esm.js
+            pkg/omm_core_bg.wasm
+            pkg/omm_core.js
+            pkg/omm-component.js
           generate_release_notes: true
           body: |
-            ## CDN
+            ## CDN — Rust/WASM (ESM)
 
-            ### Script tag
+            ### Один тег — полная 3D-сцена
             ```html
-            <script src="https://cdn.jsdelivr.net/gh/NelikKKL/OMM-model@${{ github.ref_name }}/dist/omm-core.min.js"></script>
+            <script type="module" src="https://cdn.jsdelivr.net/gh/NelikKKL/OMM-model@${{ github.ref_name }}/pkg/omm-component.js"></script>
+
+            <omm-model src="model.omm" autorate freer></omm-model>
             ```
 
-            ### ESM
-            ```js
-            import 'https://cdn.jsdelivr.net/gh/NelikKKL/OMM-model@${{ github.ref_name }}/dist/omm-core.esm.js';
+            ### One tag — full 3D scene
+            ```html
+            <script type="module" src="https://cdn.jsdelivr.net/gh/NelikKKL/OMM-model@${{ github.ref_name }}/pkg/omm-component.js"></script>
+
+            <omm-model src="model.omm" autorate freer></omm-model>
             ```
