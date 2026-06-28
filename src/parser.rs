@@ -34,7 +34,7 @@ pub fn parse_omm(txt: &str) -> ParseResult {
             let mono_id = extract_mono_id(l);
 
             let idx = objects.len();
-            objects.push(OmmObject { shape, sy, mono_id, ..Default::default() });
+            objects.push(OmmObject { shape, sy, ..Default::default() });
             current = Some(idx);
 
             if let Some(mid) = mono_id {

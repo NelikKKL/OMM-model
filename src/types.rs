@@ -7,13 +7,6 @@ pub struct Vec3 {
     pub z: f64,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct ProjectedPoint {
-    pub x: f64,
-    pub y: f64,
-    pub z: f64,
-}
-
 pub type Face = Vec<usize>;
 
 pub struct Geometry {
@@ -73,8 +66,6 @@ pub struct OmmObject {
     pub ur: f64, pub ul: f64,
     pub ug: f64, pub um: f64,
     pub ud: f64, pub uu: f64,
-    // Mono group
-    pub mono_id: Option<u32>,
     // Animation
     pub anim:       Option<Vec<AnimationKeyframe>>,
     pub anim_index: usize,
@@ -91,7 +82,6 @@ impl Default for OmmObject {
             rgb: [200, 200, 200],
             tex_src: None,
             ur: 0.0, ul: 0.0, ug: 0.0, um: 0.0, ud: 0.0, uu: 0.0,
-            mono_id: None,
             anim: None,
             anim_index: 0,
             anim_speed: 2.0,
