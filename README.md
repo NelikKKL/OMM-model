@@ -11,7 +11,7 @@
 ### CDN — один тег (ESM)
 ```html
 <script type="module"
-  src="https://cdn.jsdelivr.net/gh/NelikKKL/OMM-model@v2.0.5/pkg/omm-component.js">
+  src="https://cdn.jsdelivr.net/gh/NelikKKL/OMM-model@v2.0.5/js/omm-component.js">
 </script>
 ```
 
@@ -136,7 +136,7 @@ mono(
 <html>
 <head>
   <script type="module"
-    src="https://cdn.jsdelivr.net/gh/NelikKKL/OMM-model@v2.0.5/pkg/omm-component.js">
+    src="https://cdn.jsdelivr.net/gh/NelikKKL/OMM-model@v2.0.5/js/omm-component.js">
   </script>
   <style>
     omm-model { width: 400px; height: 400px; display: block; }
