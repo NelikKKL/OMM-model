@@ -4,7 +4,7 @@
 
 **OMM** is an ultra-lightweight 3D model format and autonomous engine written in **Rust** and compiled to **WebAssembly**. Designed for quick integration of 3D graphics into web projects with zero dependencies.
 
-> **v3.0** — full rewrite in Rust/WASM. The renderer core (~30 KB `.wasm`) is compiled from safe Rust; a thin JS wrapper registers the Web Component.
+> **v3.0** — full rewrite in Rust/WASM. The renderer core (~140 KB `.wasm`) is compiled from safe Rust; a thin JS wrapper registers the Web Component.
 
 ## 📦 Installation
 
@@ -209,6 +209,16 @@ cp js/omm-component.js pkg/
 Output artifacts will appear in `pkg/`.
 
 ---
+
+## История
+
+v3.0.0: Support Mesh3 and glb, obj
+
+v2.0.5: Revrite on Rust
+
+v2.0.0: Revrite on TypeScript
+
+v1.0.0: (Only in commits), 2.0.0 on  pure js
 
 ## ⚠️ Technical Notes
 
