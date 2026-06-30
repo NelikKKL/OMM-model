@@ -129,6 +129,64 @@ export class OmmEngine {
     }
 }
 if (Symbol.dispose) OmmEngine.prototype[Symbol.dispose] = OmmEngine.prototype.free;
+
+/**
+ * Конвертирует байты бинарного glTF (`.glb`) в синтаксис `.omm`. Обходит всю
+ * иерархию узлов сцены, запекает трансформации в координаты вершин и
+ * переносит базовый цвет/встроенные текстуры материалов, где они есть.
+ * Поддерживается только самодостаточный `.glb` (не `.gltf` + внешние файлы).
+ * @param {Uint8Array} data
+ * @returns {string}
+ */
+export function glb_to_omm(data) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passArray8ToWasm0(data, wasm.__wbindgen_malloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.glb_to_omm(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
+
+/**
+ * Конвертирует текст Wavefront OBJ (`.obj`) в синтаксис `.omm` (один блок
+ * `mesh3`). Материалы (`.mtl`) не разбираются — результат имеет нейтральный
+ * серый цвет; добавьте `color(...)`/`texture(...)` к получившемуся тексту
+ * вручную при необходимости.
+ * @param {string} text
+ * @returns {string}
+ */
+export function obj_to_omm(text) {
+    let deferred3_0;
+    let deferred3_1;
+    try {
+        const ptr0 = passStringToWasm0(text, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+        const len0 = WASM_VECTOR_LEN;
+        const ret = wasm.obj_to_omm(ptr0, len0);
+        var ptr2 = ret[0];
+        var len2 = ret[1];
+        if (ret[3]) {
+            ptr2 = 0; len2 = 0;
+            throw takeFromExternrefTable0(ret[2]);
+        }
+        deferred3_0 = ptr2;
+        deferred3_1 = len2;
+        return getStringFromWasm0(ptr2, len2);
+    } finally {
+        wasm.__wbindgen_free(deferred3_0, deferred3_1, 1);
+    }
+}
 function __wbg_get_imports() {
     const import0 = {
         __proto__: null,
@@ -361,6 +419,13 @@ function isLikeNone(x) {
     return x === undefined || x === null;
 }
 
+function passArray8ToWasm0(arg, malloc) {
+    const ptr = malloc(arg.length * 1, 1) >>> 0;
+    getUint8ArrayMemory0().set(arg, ptr / 1);
+    WASM_VECTOR_LEN = arg.length;
+    return ptr;
+}
+
 function passStringToWasm0(arg, malloc, realloc) {
     if (realloc === undefined) {
         const buf = cachedTextEncoder.encode(arg);
@@ -396,6 +461,12 @@ function passStringToWasm0(arg, malloc, realloc) {
 
     WASM_VECTOR_LEN = offset;
     return ptr;
+}
+
+function takeFromExternrefTable0(idx) {
+    const value = wasm.__wbindgen_externrefs.get(idx);
+    wasm.__externref_table_dealloc(idx);
+    return value;
 }
 
 let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
