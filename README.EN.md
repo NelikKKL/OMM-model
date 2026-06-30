@@ -71,6 +71,43 @@ A `.omm` file is a plain text document. Each shape starts with a keyword.
 | `cylinder3` | Cylinder. |
 | `triangle3` | Flat triangle. |
 | `image3` | Textured billboard plane. |
+| `mesh3` | Arbitrary (complex) geometry — see below. |
+
+### 1.1. Arbitrary geometry `mesh3`
+
+`mesh3` holds any triangle geometry — hand-authored or imported from `.glb`/`.obj`. Shading is computed per-face from its real normal (flat shading), not the index-based trick used for primitives, so complex shapes look correct from any angle.
+
+Hand-authored:
+
+```
+mesh3
+verts(0 -50 0, 50 50 0, -50 50 0, 0 -50 100)
+tris(0 1 2, 0 3 1, 0 2 3, 1 3 2)
+color(220, 120, 60)
+```
+
+`verts(x y z, ...)` lists vertices, `tris(i j k, ...)` lists triangle indices (0-based), and an optional `uvs(u v, ...)` adds one UV pair per vertex. All standard transforms apply (`x/y/z`, `scale`, `rr/ru`, `animation`, `mono()`) except asymmetric deform (`ur/ul/...`).
+
+Auto-generated meshes pack geometry into compact base64 instead: `data(...)`. This is produced by the `.glb`/`.obj` importers below and isn't meant to be hand-edited.
+
+### 1.2. Importing `.glb` and `.obj`
+
+Just point `src` at the file — conversion to `mesh3` happens automatically in the browser:
+
+```html
+<omm-model src="model.glb" autorate></omm-model>
+<omm-model src="model.obj" freer></omm-model>
+```
+
+`.glb` support bakes the full node hierarchy into vertex positions and carries over `baseColorFactor` and embedded PNG/JPEG textures (TRIANGLES mode only; skeletal animation/morph targets aren't imported; only self-contained `.glb`, not `.gltf` + external files). `.obj` support parses vertices/UVs/faces (n-gons are fan-triangulated); `.mtl` materials aren't parsed, so add `color()`/`texture()` to the result manually if needed.
+
+To convert once and cache the result as a plain `.omm` file, call the WASM exports directly:
+
+```js
+import init, { obj_to_omm, glb_to_omm } from './omm_core.js';
+await init();
+const ommText = obj_to_omm(await (await fetch('chair.obj')).text());
+```
 
 ### 2. Transformations
 
@@ -92,7 +129,7 @@ Supported per-keyframe fields: `x`, `y`, `z`, `rr`, `ru`.
 
 ### 4. Asymmetric Stretching
 
-Deform shapes by stretching individual sides (all types except `cube3`):
+Deform shapes by stretching individual sides (all types except `cube3` and `mesh3`):
 
 ```
 ur(n)  ul(n)   — right / left (X-axis)

@@ -1,3 +1,6 @@
+use std::rc::Rc;
+use crate::mesh::MeshData;
+
 // ── Geometry ──────────────────────────────────────────────────────────────────
 
 #[derive(Clone, Debug, Default)]
@@ -24,6 +27,9 @@ pub enum ShapeType {
     Sphere,
     Cylinder,
     Image,
+    /// Произвольная (импортированная или описанная руками) геометрия.
+    /// Данные лежат в `OmmObject::mesh`.
+    Mesh,
 }
 
 impl ShapeType {
@@ -35,6 +41,7 @@ impl ShapeType {
             "sphere3"   => Some(Self::Sphere),
             "cylinder3" => Some(Self::Cylinder),
             "image3"    => Some(Self::Image),
+            "mesh3"     => Some(Self::Mesh),
             _           => None,
         }
     }
@@ -70,6 +77,13 @@ pub struct OmmObject {
     pub anim:       Option<Vec<AnimationKeyframe>>,
     pub anim_index: usize,
     pub anim_speed: f64,
+    // Custom geometry (shape == Mesh)
+    pub mesh: Option<Rc<MeshData>>,
+    // Временные поля для текстового авторинга (`verts()/uvs()/tris()`),
+    // финализируются в `mesh` парсером после разбора всех строк объекта.
+    pub mesh_v:    Option<Vec<Vec3>>,
+    pub mesh_uv:   Option<Vec<(f32, f32)>>,
+    pub mesh_tris: Option<Vec<[u32; 3]>>,
 }
 
 impl Default for OmmObject {
@@ -85,6 +99,10 @@ impl Default for OmmObject {
             anim: None,
             anim_index: 0,
             anim_speed: 2.0,
+            mesh: None,
+            mesh_v: None,
+            mesh_uv: None,
+            mesh_tris: None,
         }
     }
 }

@@ -3,6 +3,10 @@ mod geometry;
 mod parser;
 mod animation;
 mod renderer;
+mod base64;
+mod json;
+mod mesh;
+mod convert;
 
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
@@ -154,4 +158,24 @@ impl OmmEngine {
 
     /// Current camera Z (used by JS to save initial_z for pinch zoom).
     pub fn camera_z(&self) -> f64 { self.camera.z }
+}
+
+// ── Import: GLB / OBJ → OMM ──────────────────────────────────────────────────
+
+/// Конвертирует текст Wavefront OBJ (`.obj`) в синтаксис `.omm` (один блок
+/// `mesh3`). Материалы (`.mtl`) не разбираются — результат имеет нейтральный
+/// серый цвет; добавьте `color(...)`/`texture(...)` к получившемуся тексту
+/// вручную при необходимости.
+#[wasm_bindgen]
+pub fn obj_to_omm(text: &str) -> Result<String, JsValue> {
+    convert::obj::obj_to_omm(text).map_err(|e| JsValue::from_str(&e))
+}
+
+/// Конвертирует байты бинарного glTF (`.glb`) в синтаксис `.omm`. Обходит всю
+/// иерархию узлов сцены, запекает трансформации в координаты вершин и
+/// переносит базовый цвет/встроенные текстуры материалов, где они есть.
+/// Поддерживается только самодостаточный `.glb` (не `.gltf` + внешние файлы).
+#[wasm_bindgen]
+pub fn glb_to_omm(data: &[u8]) -> Result<String, JsValue> {
+    convert::gltf::glb_to_omm(data).map_err(|e| JsValue::from_str(&e))
 }

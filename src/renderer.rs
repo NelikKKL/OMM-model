@@ -132,6 +132,10 @@ impl Renderer {
         h:       f64,
         tex_opt: Option<&HtmlImageElement>,
     ) -> Vec<DrawableFace> {
+        if obj.shape == ShapeType::Mesh {
+            return self.collect_mesh_faces(obj, camera, ct, w, h, tex_opt);
+        }
+
         let (raw_v, raw_f): (Vec<Vec3>, Option<Vec<Face>>) =
             match obj.shape {
                 ShapeType::Cube     => (cube_v(),     Some(cube_f())),
@@ -140,6 +144,7 @@ impl Renderer {
                 ShapeType::Sphere   => { let g = build_sphere_geo();   (g.v, Some(g.faces)) }
                 ShapeType::Cylinder => { let g = build_cylinder_geo(); (g.v, Some(g.faces)) }
                 ShapeType::Image    => (image_v(),    None),
+                ShapeType::Mesh     => unreachable!(),
             };
 
         let s  = obj.s;
@@ -275,6 +280,83 @@ impl Renderer {
                     pts: [p0, p1, p2, p3],
                     n,
                     rgb:   obj.rgb,
+                    shade,
+                },
+            });
+        }
+
+        result
+    }
+
+    // ── Произвольная геометрия (`mesh3`) ──────────────────────────────────────
+
+    fn collect_mesh_faces(
+        &self,
+        obj:     &OmmObject,
+        camera:  &Camera,
+        ct:      &CameraTrig,
+        w:       f64,
+        h:       f64,
+        tex_opt: Option<&HtmlImageElement>,
+    ) -> Vec<DrawableFace> {
+        let Some(geo) = obj.mesh.as_ref() else { return vec![] };
+
+        let s  = obj.s;
+        let sy = s * obj.sy;
+        let cos_rx = obj.rx.cos(); let sin_rx = obj.rx.sin();
+        let cos_ry = obj.ry.cos(); let sin_ry = obj.ry.sin();
+
+        let pts: Vec<Pt> = geo.v.iter().map(|rv| {
+            self.project(rv.x * s, rv.y * sy, rv.z * s, cos_rx, sin_rx, cos_ry, sin_ry,
+                         obj.x, obj.y, obj.z, camera, ct, w, h)
+        }).collect();
+
+        let has_tex = tex_opt.is_some_and(|t| t.complete() && t.natural_width() > 0);
+        let tw = tex_opt.map_or(0.0, |t| t.natural_width()  as f64);
+        let th = tex_opt.map_or(0.0, |t| t.natural_height() as f64);
+
+        let mut result: Vec<DrawableFace> = Vec::with_capacity(geo.tris.len());
+
+        for tri in &geo.tris {
+            let (a, b, c) = (tri[0] as usize, tri[1] as usize, tri[2] as usize);
+            if a >= pts.len() || b >= pts.len() || c >= pts.len() { continue; }
+            let z = (pts[a].z + pts[b].z + pts[c].z) / 3.0;
+
+            if has_tex {
+                if let Some(uv) = &geo.uv {
+                    let tex = tex_opt.unwrap();
+                    result.push(DrawableFace {
+                        z,
+                        cmd: DrawCmd::TexTri {
+                            pts: [pts[a].clone(), pts[b].clone(), pts[c].clone()],
+                            tex: tex.clone(),
+                            u: [uv[a].0 as f64 * tw, uv[b].0 as f64 * tw, uv[c].0 as f64 * tw],
+                            v: [uv[a].1 as f64 * th, uv[b].1 as f64 * th, uv[c].1 as f64 * th],
+                        },
+                    });
+                    continue;
+                }
+            }
+
+            // Плоское освещение по нормали грани (в локальном пространстве
+            // объекта — направленный свет сверху-спереди + базовая ambient).
+            let e1 = (geo.v[b].x - geo.v[a].x, geo.v[b].y - geo.v[a].y, geo.v[b].z - geo.v[a].z);
+            let e2 = (geo.v[c].x - geo.v[a].x, geo.v[c].y - geo.v[a].y, geo.v[c].z - geo.v[a].z);
+            let nx = e1.1 * e2.2 - e1.2 * e2.1;
+            let ny = e1.2 * e2.0 - e1.0 * e2.2;
+            let nz = e1.0 * e2.1 - e1.1 * e2.0;
+            let len = (nx * nx + ny * ny + nz * nz).sqrt().max(1e-9);
+            const LIGHT: (f64, f64, f64) = (0.4, -0.7, -0.6);
+            let dot = (nx * LIGHT.0 + ny * LIGHT.1 + nz * LIGHT.2) / len;
+            let shade = (0.55 + dot.max(0.0) * 0.45).min(1.0);
+
+            let blank_pt = Pt { x: 0.0, y: 0.0, z: 0.0 };
+            result.push(DrawableFace {
+                z,
+                cmd: DrawCmd::Solid {
+                    pts: [pts[a].clone(), pts[b].clone(), pts[c].clone(), blank_pt],
+                    n: 3,
+                    rgb: obj.rgb,
                     shade,
                 },
             });

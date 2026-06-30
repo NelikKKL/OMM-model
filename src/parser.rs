@@ -1,5 +1,8 @@
 use std::collections::HashMap;
-use crate::types::{OmmObject, MonoGroup, MonoGroupTransform, ShapeType, AnimationKeyframe};
+use std::rc::Rc;
+use crate::types::{OmmObject, MonoGroup, MonoGroupTransform, ShapeType, AnimationKeyframe, Vec3};
+use crate::mesh::MeshData;
+use crate::base64;
 
 // ── Public result ─────────────────────────────────────────────────────────────
 
@@ -47,6 +50,20 @@ pub fn parse_omm(txt: &str) -> ParseResult {
 
         let Some(idx) = current else { continue };
         parse_props(l, &mut objects[idx], &mut has_animation);
+    }
+
+    // Step 2.5: finalize hand-authored mesh geometry (verts()/tris()/uvs())
+    // into obj.mesh, if a binary data(...) block wasn't already provided.
+    for obj in objects.iter_mut() {
+        if obj.mesh.is_none() {
+            if let (Some(v), Some(tris)) = (obj.mesh_v.take(), obj.mesh_tris.take()) {
+                let uv = obj.mesh_uv.take();
+                obj.mesh = Some(Rc::new(MeshData { v, uv, tris }));
+            }
+        }
+        obj.mesh_v = None;
+        obj.mesh_uv = None;
+        obj.mesh_tris = None;
     }
 
     // Step 3: apply mono group-level transforms
@@ -214,6 +231,16 @@ fn parse_props(line: &str, obj: &mut OmmObject, has_anim: &mut bool) {
                 obj.anim = Some(parse_animation_frames(val));
                 *has_anim = true;
             }
+            "data" => {
+                if let Some(bytes) = base64::decode(val.trim()) {
+                    if let Some(md) = MeshData::unpack(&bytes) {
+                        obj.mesh = Some(Rc::new(md));
+                    }
+                }
+            }
+            "verts" => obj.mesh_v    = Some(parse_vec3_list(val)),
+            "uvs"   => obj.mesh_uv   = Some(parse_uv_list(val)),
+            "tris"  => obj.mesh_tris = Some(parse_tri_list(val)),
             _ => {}
         }
         pos = end;
@@ -262,7 +289,7 @@ fn parse_anim_kv(s: &str) -> AnimationKeyframe {
 // ── String helpers ────────────────────────────────────────────────────────────
 
 const SHAPES: &[&str] = &[
-    "image3", "cube3", "pyramid3", "triangle3", "sphere3", "cylinder3",
+    "image3", "cube3", "pyramid3", "triangle3", "sphere3", "cylinder3", "mesh3",
 ];
 
 fn extract_shape(s: &str) -> Option<ShapeType> {
@@ -335,4 +362,30 @@ fn parse_f64(s: &str) -> f64 {
 
 fn parse_u8(s: &str) -> u8 {
     s.trim().parse::<i32>().unwrap_or(0).clamp(0, 255) as u8
+}
+
+// ── Hand-authored mesh geometry: `verts(...) tris(...) uvs(...)` ──────────────
+// Numbers may be separated by commas, spaces, or both — both act as plain
+// delimiters and the resulting flat list is chunked into fixed-size groups
+// (3 for verts/tris, 2 for uvs), so `x y z, x y z` and `x,y,z x,y,z` both work.
+
+fn parse_numbers(s: &str) -> Vec<f64> {
+    s.split(|c: char| c == ',' || c.is_whitespace())
+        .filter(|t| !t.is_empty())
+        .filter_map(|t| t.parse().ok())
+        .collect()
+}
+
+fn parse_vec3_list(s: &str) -> Vec<Vec3> {
+    parse_numbers(s).chunks_exact(3).map(|c| Vec3 { x: c[0], y: c[1], z: c[2] }).collect()
+}
+
+fn parse_uv_list(s: &str) -> Vec<(f32, f32)> {
+    parse_numbers(s).chunks_exact(2).map(|c| (c[0] as f32, c[1] as f32)).collect()
+}
+
+fn parse_tri_list(s: &str) -> Vec<[u32; 3]> {
+    parse_numbers(s).chunks_exact(3)
+        .map(|c| [c[0] as u32, c[1] as u32, c[2] as u32])
+        .collect()
 }

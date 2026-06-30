@@ -15,6 +15,8 @@ const WASM_URL = new URL('./omm_core.js', import.meta.url);
 
 let wasmReady = null;
 let OmmEngine = null;
+let objToOmm  = null;
+let glbToOmm  = null;
 
 async function initWasm() {
   if (wasmReady) return wasmReady;
@@ -22,6 +24,8 @@ async function initWasm() {
     const mod = await import(WASM_URL.href);
     await mod.default(); // call wasm-pack's `init()` to load the .wasm binary
     OmmEngine = mod.OmmEngine;
+    objToOmm  = mod.obj_to_omm;
+    glbToOmm  = mod.glb_to_omm;
   })();
   return wasmReady;
 }
@@ -78,13 +82,26 @@ class OmmModel extends HTMLElement {
     const src = this.getAttribute('src');
     let text = '';
 
-    if (src?.endsWith('.omm')) {
+    if (src) {
+      const ext = (src.split('.').pop() || '').toLowerCase();
       try {
-        const res = await fetch(src);
-        if (res.ok) text = await res.text();
-        else        console.error(`OMM: failed to load "${src}" (${res.status})`);
+        if (ext === 'omm') {
+          const res = await fetch(src);
+          if (res.ok) text = await res.text();
+          else        console.error(`OMM: failed to load "${src}" (${res.status})`);
+        } else if (ext === 'obj') {
+          const res = await fetch(src);
+          if (res.ok) text = objToOmm(await res.text());
+          else        console.error(`OMM: failed to load "${src}" (${res.status})`);
+        } else if (ext === 'glb') {
+          const res = await fetch(src);
+          if (res.ok) text = glbToOmm(new Uint8Array(await res.arrayBuffer()));
+          else        console.error(`OMM: failed to load "${src}" (${res.status})`);
+        } else {
+          console.error(`OMM: неподдерживаемый формат "${src}" (ожидается .omm, .obj или .glb)`);
+        }
       } catch (e) {
-        console.error('OMM fetch error:', e);
+        console.error('OMM: ошибка загрузки/конвертации модели:', e);
       }
     } else {
       text = this.textContent?.trim() ?? '';
